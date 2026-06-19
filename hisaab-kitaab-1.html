@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#1b4332"/>
+<title>حساب کتاب</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{margin:0;padding:0;background:#f0f4f0;font-family:'Noto Nastaliq Urdu','Jameel Noori Nastaleeq',serif;overflow-x:hidden;}
+  input,select,textarea,button{font-family:inherit;}
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-thumb{background:#2d6a4f;border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+const todayFn = () => new Date().toISOString().slice(0,10);
+const fmt = n => Number(n||0).toLocaleString('ur-PK');
+const EXPENSE_CATS = ['فیڈ / چارہ','ڈیزل','بجلی','مزدوری','دوائی','کرایہ','دیگر'];
+
+function useLS(key, init) {
+  const [val, setVal] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(key)) ?? init; }
+    catch { return init; }
+  });
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(val)); }, [key, val]);
+  return [val, setVal];
+}
+
+// ── Styles ──
+const S = {
+  input: { width:'100%', padding:'11px 12px', borderRadius:8, border:'1px solid #ddd',
+    fontSize:15, marginBottom:10, background:'#fafafa', outline:'none', display:'block' },
+  saveBtn: { width:'100%', padding:'14px', background:'#1b4332', color:'#fff',
+    border:'none', borderRadius:10, fontWeight:'bold', fontSize:15, cursor:'pointer' },
+  miniBtn: { padding:'7px 14px', background:'#1b4332', color:'#fff', border:'none',
+    borderRadius:6, fontSize:13, cursor:'pointer', display:'inline-block', textAlign:'center' },
+  topBar: { background:'#1b4332', color:'#fff', padding:'13px 16px',
+    display:'flex', alignItems:'center', justifyContent:'space-between',
+    position:'sticky', top:0, zIndex:10, boxShadow:'0 2px 8px rgba(0,0,0,0.3)' },
+  card: (color, wide) => ({
+    background:'#fff', borderRadius:10, padding:'12px 14px',
+    gridColumn: wide ? '1 / -1' : 'auto',
+    borderTop:`4px solid ${color}`,
+    boxShadow:'0 1px 4px rgba(0,0,0,0.08)'
+  }),
+};
+
+function BannerAd() {
+  return (
+    <div style={{ background:'linear-gradient(90deg,#1a472a,#2d6a4f)', color:'#fff',
+      textAlign:'center', padding:'9px 12px', fontSize:12, borderRadius:6,
+      margin:'8px 0', border:'1px dashed #52b788' }}>
+      📢 اشتہار — AdMob Banner یہاں لگے گا
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, color, wide }) {
+  return (
+    <div style={S.card(color, wide)}>
+      <div style={{ fontSize:12, color:'#888', marginBottom:3 }}>{icon} {label}</div>
+      <div style={{ fontWeight:'bold', fontSize:20, color }}>{value}</div>
+    </div>
+  );
+}
+
+function ActionBtn({ icon, label, onClick, green }) {
+  return (
+    <button onClick={onClick} style={{ flex:1, background: green?'#2d6a4f':'#1b4332',
+      color:'#fff', border:'none', borderRadius:10, padding:'13px 8px',
+      fontWeight:'bold', fontSize:14, cursor:'pointer' }}>
+      {icon} {label}
+    </button>
+  );
+}
+
+function Lbl({ t }) {
+  return <div style={{ fontSize:12, color:'#666', marginBottom:4 }}>{t}</div>;
+}
+
+// ═══ HOME ═══
+function HomeScreen({ customers, transactions, expenses, nav, isUrdu, openReports }) {
+  const td = todayFn();
+  const todayRec = transactions.filter(t=>t.date===td&&t.type==='received').reduce((s,t)=>s+Number(t.amount),0);
+  const todayExp = expenses.filter(e=>e.date===td).reduce((s,e)=>s+Number(e.amount),0);
+  const totalBal = customers.reduce((sum,c)=>{
+    const b = transactions.filter(t=>t.customerId===c.id)
+      .reduce((s,t)=>t.type==='given'?s+Number(t.amount):s-Number(t.amount),0);
+    return sum+b;
+  },0);
+
+  return (
+    <div>
+      <BannerAd/>
+      <div style={{ fontSize:20, fontWeight:'bold', color:'#1b4332', marginBottom:12 }}>
+        {isUrdu?'آج کا خلاصہ':'Today\'s Summary'}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+        <StatCard icon="💰" label={isUrdu?'آج کی وصولی':'Today Received'} value={`₨${fmt(todayRec)}`} color="#1b4332"/>
+        <StatCard icon="📤" label={isUrdu?'آج کا خرچہ':'Today Expense'} value={`₨${fmt(todayExp)}`} color="#9b2226"/>
+      </div>
+      <StatCard icon="📋" label={isUrdu?'کل بقایا':'Total Outstanding'} value={`₨${fmt(totalBal)}`} color="#023e8a" wide/>
+      <div style={{ display:'flex', gap:10, marginTop:14 }}>
+        <ActionBtn icon="➕" label={isUrdu?'نیا کسٹمر':'New Customer'} onClick={()=>nav('newCustomer')}/>
+        <ActionBtn icon="🔄" label={isUrdu?'نیا لین دین':'New Transaction'} onClick={()=>nav('newTx')} green/>
+      </div>
+      <div style={{ marginTop:18 }}>
+        <div style={{ fontWeight:'bold', color:'#1b4332', marginBottom:8, fontSize:14 }}>
+          {isUrdu?'حالیہ لین دین':'Recent Transactions'}
+        </div>
+        {transactions.length===0 && (
+          <div style={{ color:'#bbb', textAlign:'center', padding:20, fontSize:13 }}>
+            {isUrdu?'ابھی کوئی لین دین نہیں':'No transactions yet'}
+          </div>
+        )}
+        {transactions.slice(-6).reverse().map(t=>{
+          const c = customers.find(x=>x.id===t.customerId);
+          return (
+            <div key={t.id} style={{ background:'#fff', borderRadius:8, padding:'10px 12px',
+              marginBottom:6, display:'flex', justifyContent:'space-between', alignItems:'center',
+              borderRight:`4px solid ${t.type==='given'?'#e63946':'#2d6a4f'}` }}>
+              <div>
+                <div style={{ fontWeight:'bold', fontSize:14 }}>{c?.name||'—'}</div>
+                <div style={{ fontSize:11, color:'#999' }}>{t.date}</div>
+                {t.notes && <div style={{ fontSize:11, color:'#666' }}>{t.notes}</div>}
+              </div>
+              <div style={{ fontWeight:'bold', color:t.type==='given'?'#e63946':'#2d6a4f', fontSize:15 }}>
+                {t.type==='given'?'-':'+'}₨{fmt(t.amount)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══ CUSTOMERS ═══
+function CustomersScreen({ customers, transactions, nav, isUrdu }) {
+  const [search, setSearch] = useState('');
+  const bal = cId => transactions.filter(t=>t.customerId===cId)
+    .reduce((s,t)=>t.type==='given'?s+Number(t.amount):s-Number(t.amount),0);
+  const totalBal = customers.reduce((s,c)=>s+bal(c.id),0);
+  const list = customers.filter(c=>
+    c.name.toLowerCase().includes(search.toLowerCase())||(c.phone||'').includes(search));
+
+  return (
+    <div>
+      <StatCard icon="💰" label={isUrdu?'کل بقایا':'Total Outstanding'} value={`₨${fmt(totalBal)}`} color="#1b4332" wide/>
+      <input placeholder={isUrdu?'🔍 نام یا فون سے تلاش':'🔍 Search name or phone'}
+        value={search} onChange={e=>setSearch(e.target.value)} style={{ ...S.input, marginTop:10 }}/>
+      {list.length===0 && (
+        <div style={{ color:'#bbb', textAlign:'center', padding:24, fontSize:13 }}>
+          {isUrdu?'کوئی کسٹمر نہیں ملا':'No customers found'}
+        </div>
+      )}
+      {list.map(c=>{
+        const b = bal(c.id);
+        return (
+          <div key={c.id} onClick={()=>nav('profile',c)}
+            style={{ background:'#fff', borderRadius:10, padding:'13px 14px', marginBottom:8,
+              cursor:'pointer', display:'flex', justifyContent:'space-between', alignItems:'center',
+              boxShadow:'0 1px 4px rgba(0,0,0,0.08)' }}>
+            <div>
+              <div style={{ fontWeight:'bold', fontSize:15 }}>{c.name}</div>
+              {c.phone && <div style={{ fontSize:12, color:'#999' }}>📞 {c.phone}</div>}
+            </div>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontWeight:'bold', fontSize:14, color:b>0?'#e63946':b<0?'#2d6a4f':'#aaa' }}>
+                ₨{fmt(Math.abs(b))}
+              </div>
+              <div style={{ fontSize:10, color:'#bbb' }}>
+                {b>0?(isUrdu?'ادھار':'Due'):b<0?(isUrdu?'زیادہ':'Overpaid'):(isUrdu?'صاف':'Clear')}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══ PROFILE ═══
+function ProfileScreen({ customer, transactions, setTransactions, nav, isUrdu }) {
+  if (!customer) return null;
+  const txs = transactions.filter(t=>t.customerId===customer.id).slice().reverse();
+  const balance = txs.reduce((s,t)=>t.type==='given'?s+Number(t.amount):s-Number(t.amount),0);
+
+  const shareWA = () => {
+    let msg = `*${customer.name}* کا حساب کتاب\nبقایا: ₨${fmt(balance)}\n\n`;
+    txs.slice(0,10).forEach(t=>{
+      msg+=`${t.date} | ${t.type==='given'?'ادھار':'وصول'} ₨${fmt(t.amount)}${t.notes?' | '+t.notes:''}\n`;
+    });
+    msg+='\nحساب کتاب ایپ سے بھیجا گیا';
+    window.open(`https://wa.me/${(customer.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
+  };
+
+  const delTx = id => {
+    if(confirm(isUrdu?'یہ لین دین حذف کریں؟':'Delete this transaction?'))
+      setTransactions(p=>p.filter(t=>t.id!==id));
+  };
+
+  return (
+    <div>
+      <div style={{ background:'#1b4332', color:'#fff', borderRadius:12, padding:16, marginBottom:14 }}>
+        <div style={{ fontSize:22, fontWeight:'bold' }}>{customer.name}</div>
+        {customer.phone && <div style={{ fontSize:13, opacity:0.8 }}>📞 {customer.phone}</div>}
+        <div style={{ marginTop:10, fontSize:17 }}>
+          {isUrdu?'بقایا: ':'Balance: '}
+          <span style={{ color:balance>0?'#ff8a8a':'#74c69d', fontWeight:'bold' }}>
+            ₨{fmt(Math.abs(balance))}
+          </span>
+          <span style={{ fontSize:12 }}> {balance>0?(isUrdu?'(ادھار باقی)':'(Due)'):balance<0?(isUrdu?'(زیادہ ادا)':'(Overpaid)'):''}</span>
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+        <button onClick={()=>nav('newTx',customer)} style={{ ...S.saveBtn, flex:1, fontSize:13 }}>🔄 {isUrdu?'نیا لین دین':'Transaction'}</button>
+        <button onClick={shareWA} style={{ ...S.saveBtn, flex:1, background:'#25D366', fontSize:13 }}>📱 واٹس ایپ</button>
+      </div>
+      <div style={{ fontWeight:'bold', color:'#1b4332', marginBottom:8, fontSize:14 }}>
+        {isUrdu?'تمام لین دین':'All Transactions'}
+      </div>
+      {txs.length===0 && <div style={{ color:'#bbb', textAlign:'center', padding:20 }}>{isUrdu?'کوئی لین دین نہیں':'No transactions yet'}</div>}
+      {txs.map(t=>(
+        <div key={t.id} style={{ background:'#fff', borderRadius:8, padding:'10px 12px', marginBottom:6,
+          display:'flex', justifyContent:'space-between',
+          borderRight:`4px solid ${t.type==='given'?'#e63946':'#2d6a4f'}` }}>
+          <div>
+            <div style={{ fontSize:12, color:'#999' }}>{t.date}</div>
+            <div style={{ fontSize:13, color:'#333' }}>{t.type==='given'?(isUrdu?'ادھار دیا':'Given'):(isUrdu?'وصول ہوئی':'Received')}</div>
+            {t.notes && <div style={{ fontSize:11, color:'#777' }}>{t.notes}</div>}
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+            <div style={{ fontWeight:'bold', color:t.type==='given'?'#e63946':'#2d6a4f' }}>
+              {t.type==='given'?'-':'+'}₨{fmt(t.amount)}
+            </div>
+            <button onClick={()=>delTx(t.id)}
+              style={{ fontSize:11, color:'#ddd', background:'none', border:'none', cursor:'pointer' }}>🗑️</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══ NEW CUSTOMER ═══
+function NewCustomerScreen({ setCustomers, nav, isUrdu }) {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const save = () => {
+    if(!name.trim()) return alert(isUrdu?'نام درج کریں':'Enter name');
+    setCustomers(p=>[...p,{ id:Date.now(), name:name.trim(), phone:phone.trim() }]);
+    nav('customers');
+  };
+  return (
+    <div>
+      <div style={{ fontSize:18, fontWeight:'bold', color:'#1b4332', marginBottom:16 }}>
+        {isUrdu?'نیا کسٹمر شامل کریں':'Add New Customer'}
+      </div>
+      <Lbl t={isUrdu?'نام *':'Name *'}/>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder={isUrdu?'کسٹمر کا نام':'Customer name'} style={S.input}/>
+      <Lbl t={isUrdu?'فون نمبر':'Phone Number'}/>
+      <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="03001234567" style={S.input} type="tel"/>
+      <button onClick={save} style={S.saveBtn}>{isUrdu?'✅ محفوظ کریں':'✅ Save'}</button>
+    </div>
+  );
+}
+
+// ═══ NEW TRANSACTION ═══
+function NewTxScreen({ customers, setTransactions, nav, isUrdu, prefill }) {
+  const [custId, setCustId] = useState(prefill?.id||'');
+  const [type, setType] = useState('given');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayFn());
+  const [notes, setNotes] = useState('');
+  const save = () => {
+    if(!custId) return alert(isUrdu?'کسٹمر منتخب کریں':'Select customer');
+    if(!amount||isNaN(amount)) return alert(isUrdu?'رقم درج کریں':'Enter amount');
+    setTransactions(p=>[...p,{ id:Date.now(), customerId:Number(custId), type, amount:Number(amount), date, notes }]);
+    nav('customers');
+  };
+  return (
+    <div>
+      <div style={{ fontSize:18, fontWeight:'bold', color:'#1b4332', marginBottom:16 }}>
+        {isUrdu?'نیا لین دین':'New Transaction'}
+      </div>
+      <Lbl t={isUrdu?'کسٹمر *':'Customer *'}/>
+      <select value={custId} onChange={e=>setCustId(e.target.value)} style={S.input}>
+        <option value="">{isUrdu?'— کسٹمر منتخب کریں —':'— Select Customer —'}</option>
+        {customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+      <Lbl t={isUrdu?'قسم *':'Type *'}/>
+      <div style={{ display:'flex', gap:8, marginBottom:12 }}>
+        {['given','received'].map(tp=>(
+          <button key={tp} onClick={()=>setType(tp)} style={{
+            flex:1, padding:'11px 0', borderRadius:8, border:'none', cursor:'pointer',
+            background:type===tp?(tp==='given'?'#e63946':'#2d6a4f'):'#e8e8e8',
+            color:type===tp?'#fff':'#333', fontWeight:'bold', fontSize:14 }}>
+            {tp==='given'?(isUrdu?'ادھار دیا':'Credit Given'):(isUrdu?'رقم وصول':'Amount Received')}
+          </button>
+        ))}
+      </div>
+      <Lbl t={isUrdu?'رقم (₨) *':'Amount (₨) *'}/>
+      <input value={amount} onChange={e=>setAmount(e.target.value)} type="number" placeholder="0" style={S.input}/>
+      <Lbl t={isUrdu?'تاریخ':'Date'}/>
+      <input value={date} onChange={e=>setDate(e.target.value)} type="date" style={S.input}/>
+      <Lbl t={isUrdu?'نوٹس':'Notes'}/>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+        placeholder={isUrdu?'کوئی نوٹ یا تفصیل...':'Optional note...'}
+        style={{ ...S.input, height:70, resize:'vertical' }}/>
+      <button onClick={save} style={S.saveBtn}>{isUrdu?'✅ محفوظ کریں':'✅ Save'}</button>
+    </div>
+  );
+}
+
+// ═══ EXPENSES ═══
+function ExpensesScreen({ expenses, setExpenses, isUrdu }) {
+  const [cat, setCat] = useState(EXPENSE_CATS[0]);
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayFn());
+  const [notes, setNotes] = useState('');
+  const [showForm, setShowForm] = useState(false);
+
+  const save = () => {
+    if(!amount||isNaN(amount)) return alert(isUrdu?'رقم درج کریں':'Enter amount');
+    setExpenses(p=>[...p,{ id:Date.now(), cat, amount:Number(amount), date, notes }]);
+    setAmount(''); setNotes(''); setShowForm(false);
+  };
+  const del = id => { if(confirm(isUrdu?'حذف کریں؟':'Delete?')) setExpenses(p=>p.filter(e=>e.id!==id)); };
+
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const monthlyTotal = expenses.filter(e=>e.date.startsWith(thisMonth)).reduce((s,e)=>s+Number(e.amount),0);
+  const byCat = EXPENSE_CATS.map(c=>({ cat:c, total:expenses.filter(e=>e.date.startsWith(thisMonth)&&e.cat===c).reduce((s,e)=>s+Number(e.amount),0) })).filter(x=>x.total>0);
+
+  return (
+    <div>
+      <StatCard icon="💸" label={isUrdu?'اس ماہ کل خرچہ':"This Month's Expenses"} value={`₨${fmt(monthlyTotal)}`} color="#9b2226" wide/>
+      <button onClick={()=>setShowForm(!showForm)} style={{ ...S.saveBtn, marginTop:10, marginBottom:10 }}>
+        {showForm?(isUrdu?'❌ بند کریں':'❌ Cancel'):(isUrdu?'➕ خرچہ شامل کریں':'➕ Add Expense')}
+      </button>
+      {showForm && (
+        <div style={{ background:'#fff', borderRadius:10, padding:14, marginBottom:12 }}>
+          <Lbl t={isUrdu?'کیٹیگری':'Category'}/>
+          <select value={cat} onChange={e=>setCat(e.target.value)} style={S.input}>
+            {EXPENSE_CATS.map(c=><option key={c}>{c}</option>)}
+          </select>
+          <Lbl t={isUrdu?'رقم (₨)':'Amount (₨)'}/>
+          <input value={amount} onChange={e=>setAmount(e.target.value)} type="number" style={S.input} placeholder="0"/>
+          <Lbl t={isUrdu?'تاریخ':'Date'}/>
+          <input value={date} onChange={e=>setDate(e.target.value)} type="date" style={S.input}/>
+          <Lbl t={isUrdu?'نوٹس':'Notes'}/>
+          <input value={notes} onChange={e=>setNotes(e.target.value)} style={S.input} placeholder={isUrdu?'تفصیل...':'Details...'}/>
+          <button onClick={save} style={S.saveBtn}>{isUrdu?'✅ محفوظ':'✅ Save'}</button>
+        </div>
+      )}
+      {byCat.length>0 && (
+        <div style={{ background:'#fff', borderRadius:10, padding:12, marginBottom:12 }}>
+          <div style={{ fontWeight:'bold', marginBottom:8, color:'#1b4332', fontSize:13 }}>{isUrdu?'کیٹیگری کے مطابق':'By Category'}</div>
+          {byCat.map(x=>(
+            <div key={x.cat} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:'1px solid #f0f0f0' }}>
+              <span style={{ fontSize:13 }}>{x.cat}</span>
+              <span style={{ fontWeight:'bold', color:'#9b2226', fontSize:13 }}>₨{fmt(x.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ fontWeight:'bold', color:'#1b4332', marginBottom:8, fontSize:14 }}>{isUrdu?'حالیہ خرچے':'Recent Expenses'}</div>
+      {expenses.slice(-20).reverse().map(e=>(
+        <div key={e.id} style={{ background:'#fff', borderRadius:8, padding:'10px 12px', marginBottom:6,
+          display:'flex', justifyContent:'space-between', borderRight:'4px solid #9b2226' }}>
+          <div>
+            <div style={{ fontWeight:'bold', fontSize:13 }}>{e.cat}</div>
+            <div style={{ fontSize:11, color:'#999' }}>{e.date}</div>
+            {e.notes && <div style={{ fontSize:11, color:'#666' }}>{e.notes}</div>}
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:6 }}>
+            <div style={{ fontWeight:'bold', color:'#9b2226', fontSize:13 }}>₨{fmt(e.amount)}</div>
+            <button onClick={()=>del(e.id)} style={{ fontSize:11, color:'#ddd', background:'none', border:'none', cursor:'pointer' }}>🗑️</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══ REPORTS ═══
+function ReportsScreen({ customers, transactions, expenses, isUrdu }) {
+  const [mode, setMode] = useState('daily');
+  const [showPreview, setShowPreview] = useState(false);
+  const td = todayFn();
+  const thisMonth = td.slice(0,7);
+  const txs = mode==='daily'?transactions.filter(t=>t.date===td):transactions.filter(t=>t.date.startsWith(thisMonth));
+  const exps = mode==='daily'?expenses.filter(e=>e.date===td):expenses.filter(e=>e.date.startsWith(thisMonth));
+  const given = txs.filter(t=>t.type==='given').reduce((s,t)=>s+Number(t.amount),0);
+  const received = txs.filter(t=>t.type==='received').reduce((s,t)=>s+Number(t.amount),0);
+  const expTotal = exps.reduce((s,e)=>s+Number(e.amount),0);
+  const net = received - given - expTotal;
+
+  const buildHTML = () => {
+    const txRows = txs.map(t=>{
+      const c=customers.find(x=>x.id===t.customerId);
+      return `<tr><td>${t.date}</td><td>${c?.name||'—'}</td><td style="color:${t.type==='given'?'#c0392b':'#1b6b3a'}">${t.type==='given'?'ادھار دیا':'وصول'}</td><td style="font-weight:bold">₨${fmt(t.amount)}</td><td>${t.notes||'—'}</td></tr>`;
+    }).join('');
+    const expRows = exps.map(e=>`<tr><td>${e.date}</td><td>${e.cat}</td><td style="color:#c0392b;font-weight:bold">₨${fmt(e.amount)}</td><td>${e.notes||'—'}</td></tr>`).join('');
+    return `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>حساب کتاب رپورٹ</title>
+<style>body{font-family:Tahoma,sans-serif;padding:20px;color:#222;direction:rtl}
+h1{color:#1b4332;font-size:20px}
+.cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.card{background:#f5f5f5;border-radius:8px;padding:10px 16px;min-width:110px}
+.card .l{font-size:11px;color:#888}.card .v{font-size:18px;font-weight:bold}
+table{width:100%;border-collapse:collapse;margin-bottom:20px}
+th{background:#1b4332;color:#fff;padding:8px;font-size:13px}
+td{padding:7px 8px;border-bottom:1px solid #eee;font-size:13px}
+tr:nth-child(even) td{background:#f9f9f9}
+h2{color:#1b4332;font-size:15px;margin:20px 0 8px}
+.footer{margin-top:30px;color:#aaa;font-size:11px;text-align:center}
+@media print{.no-print{display:none}}</style></head><body>
+<h1>📒 حساب کتاب رپورٹ</h1>
+<p style="color:#888;font-size:13px">${mode==='daily'?'تاریخ: '+td:'مہینہ: '+thisMonth}</p>
+<div class="cards">
+<div class="card"><div class="l">ادھار دیا</div><div class="v" style="color:#c0392b">₨${fmt(given)}</div></div>
+<div class="card"><div class="l">وصولی</div><div class="v" style="color:#1b6b3a">₨${fmt(received)}</div></div>
+<div class="card"><div class="l">اخراجات</div><div class="v" style="color:#8e1c1c">₨${fmt(expTotal)}</div></div>
+<div class="card"><div class="l">خالص</div><div class="v" style="color:${net>=0?'#1b6b3a':'#c0392b'}">₨${fmt(Math.abs(net))}${net<0?' (نقصان)':''}</div></div>
+</div>
+${txs.length>0?`<h2>لین دین</h2><table><tr><th>تاریخ</th><th>کسٹمر</th><th>قسم</th><th>رقم</th><th>نوٹس</th></tr>${txRows}</table>`:''}
+${exps.length>0?`<h2>اخراجات</h2><table><tr><th>تاریخ</th><th>کیٹیگری</th><th>رقم</th><th>نوٹس</th></tr>${expRows}</table>`:''}
+<div class="footer">حساب کتاب ایپ | ${new Date().toLocaleString('ur-PK')}</div>
+</body></html>`;
+  };
+
+  const download = () => {
+    const blob = new Blob([buildHTML()],{type:'text/html;charset=utf-8'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `hisaab_${mode==='daily'?td:thisMonth}.html`;
+    a.click();
+  };
+
+  return (
+    <div>
+      {showPreview && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:200, display:'flex', flexDirection:'column' }}>
+          <div style={{ background:'#1b4332', color:'#fff', padding:'11px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontWeight:'bold' }}>📄 {isUrdu?'رپورٹ پریویو':'Report Preview'}</span>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={download} style={{ ...S.miniBtn, background:'#52b788' }}>⬇️ ڈاؤنلوڈ</button>
+              <button onClick={()=>setShowPreview(false)} style={{ ...S.miniBtn, background:'#e63946' }}>✕ بند</button>
+            </div>
+          </div>
+          <iframe srcDoc={buildHTML()} style={{ flex:1, border:'none', background:'#fff' }}/>
+        </div>
+      )}
+      <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+        {['daily','monthly'].map(m=>(
+          <button key={m} onClick={()=>setMode(m)} style={{
+            flex:1, padding:'11px 0', borderRadius:8, border:'none', cursor:'pointer',
+            background:mode===m?'#1b4332':'#e0e0e0', color:mode===m?'#fff':'#333', fontWeight:'bold' }}>
+            {m==='daily'?(isUrdu?'روزانہ':'Daily'):(isUrdu?'ماہانہ':'Monthly')}
+          </button>
+        ))}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+        <StatCard icon="📤" label={isUrdu?'ادھار دیا':'Given'} value={`₨${fmt(given)}`} color="#e63946"/>
+        <StatCard icon="💰" label={isUrdu?'وصولی':'Received'} value={`₨${fmt(received)}`} color="#2d6a4f"/>
+      </div>
+      <StatCard icon="💸" label={isUrdu?'اخراجات':'Expenses'} value={`₨${fmt(expTotal)}`} color="#9b2226" wide/>
+      <StatCard icon="📊" label={isUrdu?'خالص':'Net'} value={`₨${fmt(net)}`} color="#023e8a" wide/>
+      <div style={{ display:'flex', gap:8, marginTop:12 }}>
+        <button onClick={()=>setShowPreview(true)} style={{ ...S.saveBtn, background:'#023e8a', flex:1 }}>👁️ {isUrdu?'رپورٹ دیکھیں':'Preview'}</button>
+        <button onClick={download} style={{ ...S.saveBtn, background:'#2d6a4f', flex:1 }}>⬇️ {isUrdu?'ڈاؤنلوڈ':'Download'}</button>
+      </div>
+      <div style={{ marginTop:14, fontWeight:'bold', color:'#1b4332', marginBottom:8, fontSize:14 }}>{isUrdu?'لین دین':'Transactions'}</div>
+      {txs.map(t=>{
+        const c=customers.find(x=>x.id===t.customerId);
+        return (
+          <div key={t.id} style={{ background:'#fff', borderRadius:8, padding:'9px 12px', marginBottom:5,
+            display:'flex', justifyContent:'space-between', borderRight:`4px solid ${t.type==='given'?'#e63946':'#2d6a4f'}` }}>
+            <div>
+              <div style={{ fontWeight:'bold', fontSize:13 }}>{c?.name}</div>
+              <div style={{ fontSize:11, color:'#999' }}>{t.date}</div>
+            </div>
+            <div style={{ fontWeight:'bold', color:t.type==='given'?'#e63946':'#2d6a4f' }}>
+              {t.type==='given'?'-':'+'}₨{fmt(t.amount)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══ SETTINGS ═══
+function SettingsScreen({ lang, setLang, customers, transactions, expenses, setCustomers, setTransactions, setExpenses, isUrdu }) {
+  const backup = () => {
+    const data = JSON.stringify({customers,transactions,expenses},null,2);
+    const a = document.createElement('a');
+    a.href = 'data:text/json;charset=utf-8,'+encodeURIComponent(data);
+    a.download = `hisaab_backup_${todayFn()}.json`; a.click();
+  };
+  const restore = e => {
+    const file = e.target.files[0]; if(!file) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      try {
+        const d = JSON.parse(ev.target.result);
+        if(d.customers) setCustomers(d.customers);
+        if(d.transactions) setTransactions(d.transactions);
+        if(d.expenses) setExpenses(d.expenses);
+        alert(isUrdu?'ڈیٹا بحال ہو گیا!':'Data restored!');
+      } catch { alert(isUrdu?'فائل غلط ہے!':'Invalid file!'); }
+    };
+    r.readAsText(file);
+  };
+  const clearAll = () => {
+    if(confirm(isUrdu?'کیا آپ واقعی تمام ڈیٹا حذف کرنا چاہتے ہیں؟':'Delete all data?'))
+      { setCustomers([]); setTransactions([]); setExpenses([]); }
+  };
+  const share = () => {
+    navigator.share?.({title:'حساب کتاب',text:'یہ ایپ استعمال کریں اپنے ادھار ریکارڈ کرنے کے لیے!'})
+      .catch(()=>{});
+  };
+
+  const Row = ({icon,label,children}) => (
+    <div style={{ background:'#fff', borderRadius:10, padding:'13px 14px', marginBottom:8,
+      display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div style={{ fontSize:14 }}>{icon} {label}</div>
+      {children}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ fontSize:18, fontWeight:'bold', color:'#1b4332', marginBottom:16 }}>{isUrdu?'ترتیبات':'Settings'}</div>
+      <Row icon="🌐" label={isUrdu?'زبان':'Language'}>
+        <div style={{ display:'flex', gap:8 }}>
+          {['ur','en'].map(l=>(
+            <button key={l} onClick={()=>setLang(l)} style={{
+              padding:'6px 14px', borderRadius:6, border:'none', cursor:'pointer',
+              background:lang===l?'#1b4332':'#ddd', color:lang===l?'#fff':'#333' }}>
+              {l==='ur'?'اردو':'English'}
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row icon="💾" label={isUrdu?'ڈیٹا بیک اپ':'Backup'}>
+        <button onClick={backup} style={S.miniBtn}>⬇️ {isUrdu?'ڈاؤنلوڈ':'Download'}</button>
+      </Row>
+      <Row icon="📂" label={isUrdu?'ریسٹور':'Restore'}>
+        <label style={{ ...S.miniBtn, cursor:'pointer' }}>
+          ⬆️ {isUrdu?'فائل':'File'}
+          <input type="file" accept=".json" onChange={restore} style={{ display:'none' }}/>
+        </label>
+      </Row>
+      <Row icon="📤" label={isUrdu?'ایپ شیئر کریں':'Share App'}>
+        <button onClick={share} style={S.miniBtn}>{isUrdu?'شیئر':'Share'}</button>
+      </Row>
+      <Row icon="🗑️" label={isUrdu?'تمام ڈیٹا حذف':'Clear All Data'}>
+        <button onClick={clearAll} style={{ ...S.miniBtn, background:'#e63946' }}>{isUrdu?'حذف':'Clear'}</button>
+      </Row>
+      <div style={{ textAlign:'center', color:'#aaa', fontSize:11, marginTop:24 }}>
+        حساب کتاب v1.0 | ڈیٹا آپ کے فون میں محفوظ ہے
+      </div>
+    </div>
+  );
+}
+
+// ═══ MAIN APP ═══
+function App() {
+  const [screen, setScreen] = useState('home');
+  const [lang, setLang] = useLS('hk_lang','ur');
+  const [customers, setCustomers] = useLS('hk_customers',[]);
+  const [transactions, setTransactions] = useLS('hk_transactions',[]);
+  const [expenses, setExpenses] = useLS('hk_expenses',[]);
+  const [selectedCust, setSelectedCust] = useState(null);
+  const [showInter, setShowInter] = useState(false);
+  const isUrdu = lang==='ur';
+
+  const nav = (s, cust=null) => { setSelectedCust(cust); setScreen(s); window.scrollTo(0,0); };
+  const openReports = () => {
+    setShowInter(true);
+    setTimeout(()=>{ setShowInter(false); nav('reports'); },2500);
+  };
+
+  const SCREENS = {
+    home: <HomeScreen {...{customers,transactions,expenses,nav,isUrdu,openReports}}/>,
+    customers: <CustomersScreen {...{customers,transactions,nav,isUrdu}}/>,
+    profile: <ProfileScreen {...{customer:selectedCust,transactions,setTransactions,nav,isUrdu}}/>,
+    newTx: <NewTxScreen {...{customers,setTransactions,nav,isUrdu,prefill:selectedCust}}/>,
+    newCustomer: <NewCustomerScreen {...{setCustomers,nav,isUrdu}}/>,
+    expenses: <ExpensesScreen {...{expenses,setExpenses,isUrdu}}/>,
+    reports: <ReportsScreen {...{customers,transactions,expenses,isUrdu}}/>,
+    settings: <SettingsScreen {...{lang,setLang,customers,transactions,expenses,setCustomers,setTransactions,setExpenses,isUrdu}}/>,
+  };
+
+  const bottomNavItems = [
+    {id:'home', icon:'🏠', label:isUrdu?'ہوم':'Home'},
+    {id:'customers', icon:'👥', label:isUrdu?'کسٹمرز':'Customers'},
+    {id:'expenses', icon:'💸', label:isUrdu?'اخراجات':'Expenses'},
+    {id:'reports_btn', icon:'📊', label:isUrdu?'رپورٹ':'Report'},
+  ];
+
+  return (
+    <div dir={isUrdu?'rtl':'ltr'} style={{ fontFamily:isUrdu?"'Noto Nastaliq Urdu',Tahoma,serif":"sans-serif",
+      background:'#f0f4f0', minHeight:'100vh', maxWidth:480, margin:'0 auto', display:'flex', flexDirection:'column' }}>
+
+      {/* Interstitial */}
+      {showInter && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.88)', zIndex:999,
+          display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', color:'#fff' }}>
+          <div style={{ fontSize:44, marginBottom:14 }}>📢</div>
+          <div style={{ fontSize:18, marginBottom:6 }}>اشتہار لوڈ ہو رہا ہے</div>
+          <div style={{ fontSize:12, opacity:0.5 }}>(AdMob Interstitial)</div>
+          <div style={{ marginTop:20, fontSize:12, opacity:0.4 }}>رپورٹ چند لمحوں میں کھلے گی...</div>
+        </div>
+      )}
+
+      {/* Top Bar */}
+      <div style={S.topBar}>
+        {screen!=='home'
+          ? <button onClick={()=>nav('home')} style={{ background:'#2d6a4f', border:'none', color:'#fff', padding:'6px 12px', borderRadius:6, cursor:'pointer', fontSize:13 }}>
+              {isUrdu?'← واپس':'← Back'}
+            </button>
+          : <div/>}
+        <div style={{ fontWeight:'bold', fontSize:17 }}>{isUrdu?'حساب کتاب':'Hisaab Kitaab'}</div>
+        <button onClick={()=>nav('settings')} style={{ background:'#2d6a4f', border:'none', color:'#fff', padding:'6px 10px', borderRadius:6, cursor:'pointer', fontSize:16 }}>⚙️</button>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, padding:'12px 14px 88px', overflowY:'auto' }}>
+        {SCREENS[screen]}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
+        width:'100%', maxWidth:480, background:'#1b4332',
+        display:'flex', justifyContent:'space-around', padding:'8px 0 10px', zIndex:10,
+        boxShadow:'0 -2px 8px rgba(0,0,0,0.25)' }}>
+        {bottomNavItems.map(({id,icon,label})=>(
+          <button key={id} onClick={()=>id==='reports_btn'?openReports():nav(id)}
+            style={{ background:'none', border:'none',
+              color:screen===id||screen==='reports'&&id==='reports_btn'?'#74c69d':'#888',
+              display:'flex', flexDirection:'column', alignItems:'center', cursor:'pointer',
+              fontSize:11, gap:2, padding:'2px 0' }}>
+            <span style={{ fontSize:22 }}>{icon}</span>
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
